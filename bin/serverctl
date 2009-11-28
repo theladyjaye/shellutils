@@ -29,6 +29,10 @@
 . ${HOME}/etc/functions_mysql.sh
 . ${HOME}/etc/functions_tokyotyrant.sh
 
+ERR_NO_PRIVS=1
+ERR_NO_VERB=2
+ERR_NO_SERVERS=3
+
 f_action()
 {   
 	for ARG in ${*:2}
@@ -46,19 +50,20 @@ f_action()
 			if [ $? -eq 0 ] ; then
 				`$FUNCTION`
 				if [ $? -eq 0 ]; then 
-					echo "[$VERB] ${ARG}"
+					echo "[ $VERB ] ${ARG}"
 				else
-					echo "[error] ${ARG}: failed to $1"
+					echo "[ starting ]"
+					echo "[   error  ] ${ARG}: failed to $1"
 				fi
 			else
-				echo "[error] ${ARG}: no $1 function defined"
+				echo "[   error  ] ${ARG}: no $1 function defined"
 			fi
 		fi
 	done
 }
 if [ "$(id -un)" != "root" ]; then
-	echo "Must run with root privileges"
-	exit 1
+	echo "[   error  ] Usage: sudo serverctl <verb> <servers>"
+	exit $ERR_NO_PRIVS
 else
 	if [ ${#*} != 0 ] ; then
 		if [ $1 = 'start' ] ; then
@@ -66,11 +71,11 @@ else
 		elif [ $1 = 'stop' ]; then
 			f_action "stop" ${*:2}
 		else
-			echo "invalid action. 'start' or 'stop' required"
-			exit 3
+			echo "[   error  ] Usage: sudo serverctl <verb> <servers>"
+			exit $ERR_NO_VERB
 		fi
 	else
-		echo "At least one server type is required"
-		exit 2
+		echo "[   error  ] Usage: sudo serverctl <verb> <servers>"
+		exit $ERR_NO_SERVERS
 	fi
 fi
