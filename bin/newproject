@@ -1,0 +1,147 @@
+#!/bin/sh
+
+# Copyright (c) 2009 Adam Venturells
+
+# Permission is hereby granted, free of charge, to any person
+# obtaining a copy of this software and associated documentation
+# files (the "Software"), to deal in the Software without
+# restriction, including without limitation the rights to use,
+# copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following
+# conditions:
+
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+# OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+# HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+# WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+# OTHER DEALINGS IN THE SOFTWARE.
+
+
+OWNER_USER="dev"
+OWNER_GROUP="staff"
+SERVER_ADMIN="aventurella@gmail.com"
+PROJECT_ROOT="${HOME}/Projects"
+VHOST_TEMPLATE="${HOME}/etc/vhost.conf"
+VHOST_LIVE="/opt/local/apache2/conf/vhosts"
+APACHECTL="/opt/local/apache2/bin/apachectl"
+HOSTS="/etc/hosts"
+ERR_INVALID_USAGE=1
+ERR_INVALID_PERMS=2
+ERR_PROJECT_EXISTS=3
+ERR_PROJECT_STRUCTURE_FAILED=4
+ERR_FOLDER_CREATION=5
+
+f_httpd_restart()
+{
+	echo "\n"
+	echo "[    ok   ] restarting httpd"
+	
+	$(${APACHECTL} restart > /dev/null 2>&1)
+	
+	if [ $? -eq 0 ]; then
+		echo "[    ok   ] httpd restarted"
+	else
+		echo "[  error  ] Unable to restart httpd"
+	fi
+}
+
+f_create_folder(){
+	mkdir $1
+	if [ $? -eq 0 ]; then
+		echo "[    ok   ] $1"
+	else
+		echo "[  error  ] $1"
+		exit $ERR_FOLDER_CREATION
+	fi
+}
+if [ $# -eq 0 ] ; then
+	echo "Usage: $(basename $0) <project_name>"
+	exit $ERR_INVALID_USAGE
+elif [ $# -eq 2 ] && [ $(id -un) != "root" ]; then
+	echo "[  error  ] Your need to run this script as root"
+	echo "Usage: sudo $(basename $0) <project_name> <hostname>"
+	exit $ERR_INVALID_PERMS
+else
+	PROJECT_NAME=$1
+	SERVER_NAME=$2
+	if [ -d "${PROJECT_ROOT}/${PROJECT_NAME}" ] ; then
+		echo "[ error ] ${PROJECT_NAME} exists, please choose a different name"
+		exit $ERR_PROJECT_EXISTS
+	else
+		echo "\n[    ok   ] Creating project root folder..."
+		DOCUMENT_ROOT="${PROJECT_ROOT}/${PROJECT_NAME}"
+		f_create_folder $DOCUMENT_ROOT
+		if [ $? -eq 0 ]; then
+			echo "[    ok   ] Creating project sub-folders..."
+			f_create_folder "${DOCUMENT_ROOT}/DEV_Deploy"
+			f_create_folder "${DOCUMENT_ROOT}/DEV_Deploy/application"
+			f_create_folder "${DOCUMENT_ROOT}/DEV_Deploy/application/javascript"
+			f_create_folder "${DOCUMENT_ROOT}/DEV_Deploy/application/system"
+			f_create_folder "${DOCUMENT_ROOT}/DEV_Source"
+			f_create_folder "${DOCUMENT_ROOT}/DEV_Source/classes"
+			
+			chown -R "${OWNER_USER}:${OWNER_GROUP}" $DOCUMENT_ROOT > /dev/null 2>&1
+			
+			if [ $? -eq 0 ]; then
+				echo "[    ok   ] folders created successfully"
+			else
+				echo "[  error  ] Unable to create folders"
+				exit $ERR_PROJECT_STRUCTURE_FAILED
+			fi
+		fi
+		
+		if [ -n $SERVER_NAME ]; then
+			echo "[    ok   ] Setting up httpd virtual host for domain ${HOST_NAME}"
+			while read line;
+			do
+				echo $line | sed -e "s!%DOCUMENT_ROOT%!${DOCUMENT_ROOT}/DEV_Deploy!" | sed -e "s!%SERVER_NAME%!$SERVER_NAME!" | sed -e "s!%SERVER_ADMIN%!$SERVER_ADMIN!" >> "${VHOST_LIVE}/${SERVER_NAME}.conf"
+			done < $VHOST_TEMPLATE
+			
+			echo "127.0.0.1	${SERVER_NAME}" >> $HOSTS
+			
+			echo "\n"
+			while true; 
+			do
+				read -p "Do you wish to restart httpd [Y/n]? " response
+				case $response in
+					[Yy]* ) f_httpd_restart; break;;
+					[Nn]* ) break;;
+					* ) f_httpd_restart; break;;
+				esac
+			done
+			
+			#echo "\nDo you wish to restart httpd?"
+			#select response in "Yes" "No"; 
+			#do
+			#	case $response in
+			#		Yes ) echo $result; break;;
+			#		No ) echo $result; break;;
+			#	esac
+			#done
+		fi
+		echo "\n"
+		while true; 
+		do
+			read -p "Do you wish to launch the project in your default editor (${EDITOR}) [Y/n]? " response
+			case $response in
+				[Yy]* ) $EDITOR $DOCUMENT_ROOT; break;;
+				[Nn]* ) exit 0;;
+				* ) $EDITOR $DOCUMENT_ROOT; break;;
+			esac
+		done
+		#select response in "Yes" "No"
+		#do
+		#	case $response in
+		#		Yes ) $EDITOR $DOCUMENT_ROOT; break;;
+		#		No ) break;
+		#	esac
+		#done
+	fi
+fi
